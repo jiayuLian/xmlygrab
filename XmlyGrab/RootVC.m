@@ -19,7 +19,7 @@ typedef NS_ENUM(NSInteger, StepKind) {
     StepKindLaunch = 0,   // 拉起喜马
     StepKindTap,          // 点一下坐标
     StepKindWait,         // 干等 N 秒（看广告就靠它）
-    StepKindUntil,        // 等到当天某个时刻（时:分:秒）
+    StepKindUntil,        // 等到「本次触发时刻 + offset 秒」
 };
 
 @interface GrabStep : NSObject
@@ -27,7 +27,7 @@ typedef NS_ENUM(NSInteger, StepKind) {
 @property (nonatomic, copy)   NSString *name;
 @property (nonatomic, assign) CGFloat x, y;
 @property (nonatomic, assign) double wait;        // Tap 后延迟 / Wait 秒数
-@property (nonatomic, assign) NSInteger untilSec; // 当天第几秒
+@property (nonatomic, assign) NSInteger offsetSec;// Until：相对本次触发时刻的偏移
 @property (nonatomic, assign) BOOL recorded;
 @end
 
@@ -52,16 +52,14 @@ typedef NS_ENUM(NSInteger, StepKind) {
         case StepKindWait:
             return [NSString stringWithFormat:@"%.0f 秒", self.wait];
         case StepKindUntil:
-            return [NSString stringWithFormat:@"%02ld:%02ld:%02ld",
-                    (long)(self.untilSec / 3600), (long)(self.untilSec % 3600 / 60),
-                    (long)(self.untilSec % 60)];
+            return [NSString stringWithFormat:@"触发时刻 +%ld 秒", (long)self.offsetSec];
     }
     return @"";
 }
 
 - (NSDictionary *)dict {
     return @{@"k": @(self.kind), @"n": self.name ?: @"", @"x": @(self.x), @"y": @(self.y),
-             @"w": @(self.wait), @"u": @(self.untilSec), @"r": @(self.recorded)};
+             @"w": @(self.wait), @"o": @(self.offsetSec), @"r": @(self.recorded)};
 }
 
 + (instancetype)fromDict:(NSDictionary *)m {
@@ -71,7 +69,7 @@ typedef NS_ENUM(NSInteger, StepKind) {
     s.x = [m[@"x"] doubleValue];
     s.y = [m[@"y"] doubleValue];
     s.wait = [m[@"w"] doubleValue];
-    s.untilSec = [m[@"u"] integerValue];
+    s.offsetSec = [m[@"o"] integerValue];
     s.recorded = [m[@"r"] boolValue];
     return s;
 }
@@ -208,6 +206,7 @@ typedef NS_ENUM(NSInteger, StepKind) {
 @property (nonatomic, assign) BOOL        running;
 @property (nonatomic, assign) UIBackgroundTaskIdentifier bgTask;
 @property (nonatomic, strong) AVAudioPlayer *silent;
+@property (nonatomic, assign) NSInteger targetSec;   // 本次触发的整点秒数
 
 // 声明在这，避免调用点看不到定义
 - (void)log:(NSString *)fmt, ...;
@@ -219,6 +218,7 @@ typedef NS_ENUM(NSInteger, StepKind) {
 - (void)onBtn:(UIButton *)b;
 - (void)onTick;
 - (void)performGrab:(NSString *)why;
+- (void)performGrab:(NSString *)why atSecond:(NSInteger)targetSecond;
 - (void)finishGrab;
 - (void)runStep:(NSInteger)i;
 - (void)after:(double)sec then:(void (^)(void))blk;
@@ -332,7 +332,7 @@ typedef NS_ENUM(NSInteger, StepKind) {
         s.kind = [a[0] integerValue];
         s.name = a[1];
         s.wait = [a[2] doubleValue];
-        s.untilSec = 1;                 // 默认 00:00:01
+        s.offsetSec = 1;                // 触发时刻 +1 秒
         s.recorded = (s.kind == StepKindLaunch || s.kind == StepKindWait || s.kind == StepKindUntil);
         [self.steps addObject:s];
     }
@@ -493,21 +493,18 @@ typedef NS_ENUM(NSInteger, StepKind) {
 
 - (void)editUntil:(NSInteger)i {
     GrabStep *s = self.steps[i];
-    UIAlertController *a = [UIAlertController alertControllerWithTitle:@"等到几点几分几秒"
-                                                              message:@"格式 HH:mm:ss，跨天自动顺延"
+    UIAlertController *a = [UIAlertController alertControllerWithTitle:@"等多久"
+                                                              message:@"相对本次触发时刻的偏移秒数。0 = 整点立刻继续，1 = 0.5~1 秒后"
                                                        preferredStyle:UIAlertControllerStyleAlert];
     [a addTextFieldWithConfigurationHandler:^(UITextField *tf) {
         tf.font = [UIFont fontWithName:@"Menlo" size:14];
-        tf.text = [s desc];
-        tf.keyboardType = UIKeyboardTypeNumbersAndPunctuation;
+        tf.text = [NSString stringWithFormat:@"%ld", (long)s.offsetSec];
+        tf.keyboardType = UIKeyboardTypeNumberPad;
     }];
     [a addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil]];
     [a addAction:[UIAlertAction actionWithTitle:@"保存" style:UIAlertActionStyleDefault handler:^(UIAlertAction *x) {
-        NSArray *p = [a.textFields.firstObject.text componentsSeparatedByString:@":"];
-        if (p.count == 3) {
-            s.untilSec = [p[0] integerValue] * 3600 + [p[1] integerValue] * 60 + [p[2] integerValue];
-            [self saveState]; [self.table reloadData];
-        }
+        s.offsetSec = [a.textFields.firstObject.text integerValue];
+        [self saveState]; [self.table reloadData];
     }]];
     [self presentViewController:a animated:YES completion:nil];
 }
@@ -580,7 +577,7 @@ typedef NS_ENUM(NSInteger, StepKind) {
         [self log:@"所有点击步都已录过坐标"];
     } else if (b.tag == 1) {
         if (self.running) { [self log:@"正在跑，先等它结束"]; return; }
-        [self performGrab:@"手动"];
+        [self performGrab:@"手动" atSecond:-1];
     } else {
         BOOL on = ![[NSUserDefaults standardUserDefaults] boolForKey:@"auto_v2"];
         [[NSUserDefaults standardUserDefaults] setBool:on forKey:@"auto_v2"];
@@ -639,26 +636,34 @@ typedef NS_ENUM(NSInteger, StepKind) {
         if (target < 0) continue;
         NSInteger left = target - nowSec;
         if (left < -43200) left += 86400;        // 只处理半天内的跨天，避免凌晨算成明天
-        // 提前 20 秒启动，走完前 4 步刚好卡在整点；过了 5 秒内仍补跑一次
-        if (left <= 20 && left >= -5 && ![self.fired containsObject:t]) {
+
+        if ([self.fired containsObject:t]) {
+            // 触发过 90 秒后清掉标记，否则今天这个点就再也不会跑了
+            if (left < -90 && left > -43200) [self.fired removeObject:t];
+            continue;
+        }
+        // 提前 20 秒启动，走完前 4 步刚好卡在整点；刚过 5 秒内仍补跑一次
+        if (left <= 20 && left >= -5) {
             [self.fired addObject:t];
             [self log:@"命中 %@（提前 %ld 秒）", t, (long)left];
-            [self performGrab:t];
+            [self performGrab:t atSecond:target];
             break;
         }
-    }
-    // 过点的时刻从集合里清掉，第二天还能再触发
-    if (self.fired.count && nowSec % 300 < 1) {
-        [self.fired removeAllObjects];
     }
 }
 
 #pragma mark 执行引擎
 
 - (void)performGrab:(NSString *)why {
+    [self performGrab:why atSecond:-1];
+}
+
+// targetSecond >= 0 表示这是定时触发的整点秒数；手动执行传 -1，用当前时间
+- (void)performGrab:(NSString *)why atSecond:(NSInteger)targetSecond {
     if (self.running) return;
     self.running = YES;
-    [self log:@"==== 开始（%@）====", why];
+    self.targetSec = targetSecond >= 0 ? targetSecond : [self secondOfDay:[NSDate date]];
+    [self log:@"==== 开始（%@）目标秒=%ld ====", why, (long)self.targetSec];
 
     if (UIApplication.sharedApplication.applicationState != UIApplicationStateActive) {
         [self log:@"注意：App 不在前台，定时器可能不准"];
@@ -705,18 +710,20 @@ typedef NS_ENUM(NSInteger, StepKind) {
             break;
         }
         case StepKindUntil: {
+            // 目标 = 本场触发的整点 + 用户设的偏移，这样 8 点场、12 点场用的是同一份流程
+            NSInteger target = self.targetSec + s.offsetSec;
             NSInteger nowSec = [self secondOfDay:[NSDate date]];
-            NSInteger left = s.untilSec - nowSec;
-            if (left < -600) left += 86400;
-            if (left > 12 * 3600) {
-                // 手动执行时不该傻等到明天
-                [self log:@"%@ 距今超过 12 小时，跳过", [s desc]];
+            NSInteger left = target - nowSec;
+            if (left < -43200) left += 86400;
+            if (left > 3600) {
+                // 超过 1 小时说明今天这场已经过去了，别傻等
+                [self log:@"%@ 目标已过 %ld 秒，直接继续", [s desc], (long)(-left)];
                 [ws runStep:i + 1];
             } else if (left <= 0) {
-                [self log:@"已过 %@，直接继续", [s desc]];
+                [self log:@"%@ 已到点，继续", [s desc]];
                 [ws runStep:i + 1];
             } else {
-                [self log:@"等到 %@（还有 %ld 秒）", [s desc], (long)left];
+                [self log:@"%@（还要 %.1f 秒）", [s desc], (double)left];
                 [self after:(double)left then:^{ [ws runStep:i + 1]; }];
             }
             break;

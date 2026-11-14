@@ -123,7 +123,8 @@ static void emit(double nx, double ny, BOOL down) {
 }
 
 + (void)tapPoint:(CGPoint)p {
-    [self tapPoint:p hold:0.05];
+    // 0.08 秒按下，太短有些按钮的手势识别器不认
+    [self tapPoint:p hold:0.08];
 }
 
 + (void)tapPoint:(CGPoint)p hold:(NSTimeInterval)sec {
