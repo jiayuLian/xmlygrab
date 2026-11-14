@@ -658,7 +658,6 @@ typedef NS_ENUM(NSInteger, StepKind) {
 - (void)performGrab:(NSString *)why {
     if (self.running) return;
     self.running = YES;
-    self.curIndex = 0;
     [self log:@"==== 开始（%@）====", why];
 
     if (UIApplication.sharedApplication.applicationState != UIApplicationStateActive) {
