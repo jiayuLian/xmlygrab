@@ -25,14 +25,14 @@ typedef IOHIDEventRef (*FingerEventFn)(
     CFAllocatorRef, AbsoluteTime, uint32_t index, uint32_t identity, uint32_t eventMask,
     IOHIDFloat x, IOHIDFloat y, IOHIDFloat z,
     IOHIDFloat tipPressure, IOHIDFloat twist,
-    Boolean range, Boolean touch, IOOptionBits options);
+    Boolean range, Boolean touch, uint32_t options);
 
 typedef IOHIDEventRef (*DigitizerEventFn)(
     CFAllocatorRef, AbsoluteTime, int type, uint32_t index, uint32_t identifier,
-    uint32_t eventMask, IOOptionBits options,
+    uint32_t eventMask, uint32_t options,
     IOHIDFloat x, IOHIDFloat y, IOHIDFloat z,
     IOHIDFloat tipPressure, IOHIDFloat barrelPressure,
-    Boolean range, Boolean touch, IOOptionBits options2);
+    Boolean range, Boolean touch, uint32_t options2);
 
 typedef void (*SetIntegerValueFn)(IOHIDEventRef, int field, CFTypeRef value);
 typedef IOHIDEventSystemClientRef (*CreateClientFn)(CFAllocatorRef);
@@ -88,10 +88,20 @@ static uint32_t gFingerId = 1;
     return ((pFinger || pDigitizer) && pDispatch && gClient) ? YES : NO;
 }
 
+// mach_absolute_time() 给的是 uint64，但 IOHID 接口要 AbsoluteTime（struct UnsignedWide）。
+// 直接强转在 arm64 上会因类型不兼容编译失败，必须拆成 hi/lo。
+static AbsoluteTime absTimeNow(void) {
+    uint64_t t = mach_absolute_time();
+    AbsoluteTime a;
+    a.hi = (UInt32)(t >> 32);
+    a.lo = (UInt32)(t & 0xFFFFFFFFu);
+    return a;
+}
+
 // 归一化坐标：iOS digitizer 要求 0~1
 static void emit(double nx, double ny, BOOL down) {
     if (!pDispatch || !gClient) return;
-    uint64_t t = mach_absolute_time();
+    AbsoluteTime t = absTimeNow();
     IOHIDEventRef ev = NULL;
 
     if (pFinger) {
