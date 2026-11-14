@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- 允许从 IOKit 层派发 digitizer 事件（跨 App 触摸注入的关键） -->
+    <key>com.apple.private.hid.client.event-dispatch</key>
+    <true/>
+    <key>com.apple.private.hid.client.event-filter</key>
+    <true/>
+    <!-- TrollStore 签名工具链要的，标识为平台应用 -->
+    <key>platform-application</key>
+    <true/>
+    <!-- 放开沙箱，才能按 bundle id 拉起别的 App -->
+    <key>com.apple.private.security.no-sandbox</key>
+    <true/>
+    <key>com.apple.private.security.container-required</key>
+    <false/>
+    <!-- 应用列表查询（LSApplicationWorkspace） -->
+    <key>com.apple.private.mobileinstall.allowedSPI</key>
+    <array>
+        <string>Lookup</string>
+        <string>Install</string>
+    </array>
+    <!-- 后台常驻 -->
+    <key>com.apple.private.backgroundtask.allow</key>
+    <true/>
+    <key>get-task-allow</key>
+    <true/>
+</dict>
+</plist>

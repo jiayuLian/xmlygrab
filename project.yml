@@ -1,0 +1,52 @@
+name: XmlyGrab
+options:
+  bundleIdPrefix: com.hanfei
+  deploymentTarget:
+    iOS: "14.0"
+  createIntermediateGroups: true
+  generateEmptyDirectories: true
+
+settings:
+  base:
+    CODE_SIGNING_ALLOWED: NO
+    CODE_SIGNING_REQUIRED: NO
+    CODE_SIGN_IDENTITY: ""
+    ENABLE_BITCODE: NO
+    ONLY_ACTIVE_ARCH: NO
+    ARCHS: arm64
+    IPHONEOS_DEPLOYMENT_TARGET: "14.0"
+    SWIFT_VERSION: "5.0"
+    GCC_C_LANGUAGE_STANDARD: gnu11
+    CLANG_ENABLE_OBJC_ARC: YES
+    # 私有 API 用 dlsym 调用，关掉可用性检查避免编译告警变成错误
+    GCC_WARN_UNDECLARED_SELECTOR: NO
+    CLANG_WARN_DOCUMENTATION_COMMENTS: NO
+
+targets:
+  XmlyGrab:
+    type: application
+    platform: iOS
+    sources:
+      - path: XmlyGrab
+        excludes:
+          - "XmlyGrab.entitlements"
+          - "Info.plist"
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.hanfei.xmlygrab
+        PRODUCT_NAME: XmlyGrab
+        CODE_SIGN_ENTITLEMENTS: XmlyGrab/XmlyGrab.entitlements
+        TARGETED_DEVICE_FAMILY: "1"
+        INFOPLIST_FILE: XmlyGrab/Info.plist
+        GENERATE_INFOPLIST_FILE: NO
+    dependencies:
+      - sdk: IOKit.framework
+      - sdk: Foundation.framework
+      - sdk: UIKit.framework
+      - sdk: PhotosUI.framework
+      - sdk: Photos.framework
+      - sdk: AVFoundation.framework
+      - sdk: CoreGraphics.framework
+    scheme:
+      testTargets: []
+      gatherCoverageData: false
